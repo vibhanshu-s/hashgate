@@ -157,8 +157,9 @@ contract HashgateTest is Test {
     function test_badPolicy() public {
         WOTSSigner a2 = new WOTSSigner(keccak256("a2"), 1);
         Hashgate.Policy memory p = Hashgate.Policy(3e6, 2e6, uint64(block.timestamp + 1), new address[](0));
-        Hashgate.OTS memory o = owner.sign(ownerLeaf++, _openDigest(a2.key(), p));
+        Hashgate.Key memory k = a2.key();
+        Hashgate.OTS memory o = owner.sign(ownerLeaf++, _openDigest(k, p));
         vm.expectRevert(Hashgate.BadPolicy.selector);
-        hg.openSession(vaultId, a2.key(), p, o);
+        hg.openSession(vaultId, k, p, o);
     }
 }
