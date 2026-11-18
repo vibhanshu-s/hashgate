@@ -501,6 +501,15 @@ export function Console() {
         </Step>
       </div>
 
+      {log[0] && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-panel/95 px-4 py-2.5 backdrop-blur lg:hidden" role="status" aria-live="polite">
+          <div className="flex items-center gap-2 text-sm">
+            {busy ? <span className="spinner text-mint" /> : <Dot kind={log[0].kind} />}
+            <span className="min-w-0 flex-1 truncate font-medium">{log[0].title}</span>
+            {log[0].tx && <a className="link mono shrink-0 text-xs" href={explorerTx(log[0].tx)} target="_blank" rel="noreferrer">tx ↗</a>}
+          </div>
+        </div>
+      )}
       <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
         <div className="card p-4">
           <div className="label">Live log</div>

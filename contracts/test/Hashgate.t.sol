@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test, stdJson} from "forge-std/Test.sol";
-import {Hashgate} from "../src/Hashgate.sol";
+import {Hashgate, IERC20} from "../src/Hashgate.sol";
 import {WOTS} from "../src/WOTS.sol";
 import {MockUSD8} from "./mocks/MockUSD8.sol";
 import {WOTSSigner} from "./WOTSSigner.sol";
@@ -35,7 +35,7 @@ contract HashgateTest is Test {
 
     function setUp() public {
         tok = new MockUSD8();
-        hg = new Hashgate(tok);
+        hg = new Hashgate(IERC20(address(tok)));
         harness = new WOTSHarness();
         owner = new WOTSSigner(keccak256("owner"), 3);
         agent = new WOTSSigner(keccak256("agent"), 2);
