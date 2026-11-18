@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contracts:
+    name: Foundry (Shanghai)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Install forge-std
+        run: cd contracts && forge install foundry-rs/forge-std --no-git
+      - name: Build
+        run: cd contracts && forge build --sizes
+      - name: Unit, fuzz and cross-language tests
+        run: cd contracts && forge test -vv --gas-report
+
+  sdk:
+    name: SDK + contract on an in-process EVM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Web typecheck and build
+        run: npm -w web run build

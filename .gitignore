@@ -1,0 +1,14 @@
+node_modules
+.env*
+!.env.example
+contracts/forge-out
+contracts/cache
+contracts/lib
+packages/sdk/dist
+.next
+web/.next
+web/next-env.d.ts
+cache
+artifacts
+.vercel
+.claude

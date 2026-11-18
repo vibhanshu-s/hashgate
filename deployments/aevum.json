@@ -1,0 +1,9 @@
+{
+  "network": "aevum-testnet",
+  "chainId": 44005,
+  "hashgate": "0x699d045bb5acfe677e7b0a44257eb4c9a5c73674",
+  "token": "0x456569838f1d43009A91ebA4263147Afd7233483",
+  "deployTx": "0xa41715621cce91ff2ad4777fdf8f34bca314e61e9107cf4697ed89952c76e8a6",
+  "deployBlock": 3511774,
+  "deployer": "0x41806BD7E14A34DD66615f651AAFccC4ADd1B540"
+}
