@@ -205,6 +205,7 @@ export function Console() {
         const r = await agentPay(current, vault.account, p.to, amount, p.memo, reserveSession(session.sessionId));
         if (r.ok) {
           update({ status: "paid", tx: r.hash, gas: r.gasUsed, leaf: r.leaf, signedOp: r.signedOp, via: r.via });
+          try { if (r.signedOp) localStorage.setItem("hashgate.lastPaidOp", JSON.stringify(r.signedOp)); } catch {}
           push("ok", `Paid ${p.amount} tUSD8 → ${vendorName(p.to) ?? short(p.to)}`, `${p.memo} · UserOperation signed with session key #${r.leaf} · ${r.gasUsed} gas · ${opLog(r)}`, r.hash);
         } else {
           update({ status: r.stage === "validation" || r.stage === "bundler" ? "blocked" : "error", reason: why(r), leaf: r.leaf });
@@ -254,9 +255,12 @@ export function Console() {
       push(r.ok ? "error" : "blocked", `Q-Day drill: forged withdrawal of ${fmt(amount)} tUSD8`, msg);
 
       // Replay: resend one of the agent's real, already-included signed UserOperations.
-      const paid = rows.find((x) => x.status === "paid" && x.signedOp);
-      if (paid?.signedOp) {
-        const r2 = await resend(paid.signedOp);
+      let replayOp = rows.find((x) => x.status === "paid" && x.signedOp)?.signedOp;
+      if (!replayOp) {
+        try { replayOp = JSON.parse(localStorage.getItem("hashgate.lastPaidOp") || "null") ?? undefined; } catch {}
+      }
+      if (replayOp && replayOp.sender?.toLowerCase() === vault.account.toLowerCase()) {
+        const r2 = await resend(replayOp);
         const msg2 = r2.ok ? "Unexpected: the replay was accepted." : why(r2);
         setDrill((d) => ({ ...d, replay: msg2 }));
         push(r2.ok ? "error" : "blocked", "Drill: replay a real agent UserOperation", msg2);

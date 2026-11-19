@@ -89,3 +89,17 @@ Scored against the 8 judging criteria (1–5, my honest view) and the strongest 
 Rivals checked: **PayeeGuard** (emilhuseyn/aevum-qday: ERC-4337 smart account, QDay bundler, tUSD8 paymaster, Docker, video), **MeterPass** (opxy16: x402 batch settlement, Kernel session keys, 178× gas saving, broad tests), **SpendLeash** (risingjerry: x402 + caps + allowlist, live). They are ahead on idiomatic AA integration; Hashgate is ahead on originality, safety story and fit with the "Post-Quantum" tag, and level on demo and docs.
 
 **Verdict: clears the bar to submit.** Biggest remaining improvement if time allows before 11 Dec: wrap a Hashgate session as an ERC-4337 validator (QDay bundler) so it scores on criterion 5 too.
+
+
+## 6. Update 2026-11-19: ERC-4337 integration (closes the criterion-5 gap)
+
+- `HashgateAccount` (EntryPoint v0.7): WOTS over the userOpHash in `validateUserOp`; session keys
+  may only call `agentPay`, policy checked in validation, expiry returned as `validUntil`
+  (ERC-7562 safe mode). `HashgateAccountFactory` (CREATE2 clones), `HashgatePaymaster`
+  (sponsors only Hashgate accounts; found that Aevum's EXTCODEHASH is not keccak256(code)).
+- Every app action now goes through QDay's own bundler (`bundler.qday.info`), gas sponsored.
+- Tests: hardhat account tests, Foundry unit + fork test against the real EntryPoint on Aevum (CI).
+
+Re-scored criterion 5 (platform integration): 3–4 → **4.5**. It now uses smart accounts, scoped
+session keys, spend limits, the native bundler and a paymaster, like PayeeGuard and MeterPass,
+while staying the only post-quantum entry. Overall estimate: **~8.5/10**, plausible top 3.

@@ -12,7 +12,7 @@ can revoke the agent instantly.
 | | |
 |---|---|
 | Live demo | **https://hashgate-three.vercel.app** (no wallet needed) |
-| Demo video | https://youtu.be/d-nyhSCl2Kw (2 min, narrated) |
+| Demo video | https://youtu.be/kcW9YxvPOIw (2:20, narrated; ERC-4337 version) |
 | Pitch deck | https://hashgate-three.vercel.app/deck ([PDF](media/hashgate-deck.pdf)) |
 | Bundler | QDay's own `https://bundler.qday.info` (rundler, ERC-7562 safe mode), EntryPoint v0.7 |
 | Account factory | [`0x54cd8d534c187bf9d6db8a37c7b45e3ad1444b21`](https://explorer-test.qday.info/address/0x54cd8d534c187bf9d6db8a37c7b45e3ad1444b21) |

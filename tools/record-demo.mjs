@@ -14,13 +14,13 @@ const TMP = path.join(OUT, "tmp");
 fs.mkdirSync(TMP, { recursive: true });
 
 const LINES = {
-  hook: "On Q-Day, a quantum computer can forge any E-C-D-S-A signature, including the key your AI agent spends with. Hashgate gives agents a stablecoin budget on QDay Aevum, authorised by hash-based, post-quantum signatures instead.",
-  vault: "No wallet needed. The browser derives thirty-two one-time Winternitz keys, and commits their Merkle root on Aevum. A relayer pays the gas, but it has no authority over the vault.",
-  session: "The owner gives the agent a scoped session: two cents per payment, four cents in total, twenty-four hours, and three approved vendors. The owner signs it with one one-time key: a two-kilobyte, hash-based signature, verified in Solidity.",
-  agent: "Now the agent reads the inbox with Gemini. We tell it to behave as if it's compromised, so it obeys instructions hidden inside invoices. Two invoices are paid, each signed with a fresh one-time key. The over-cap invoice is refused. And the hidden instruction to pay an attacker is refused too: payee not allowed.",
-  proof: "Refusals can be recorded on-chain. Here is the reverted transaction on the Aevum explorer, with the contract's own error.",
-  drill: "Now assume Q-Day has arrived, and the attacker holds every E-C-D-S-A key in the system. A forged withdrawal fails: bad signature. Replaying a real agent signature fails: that one-time key is spent. And a single owner signature revokes the agent, instantly.",
-  close: "Every step is a real transaction on Aevum testnet, and the contract, the SDK and the agent are open source. Hashgate. The agent can ask. Only a hash chain can pay.",
+  hook: "On Q-Day, a quantum computer can forge any E-C-D-S-A signature, including the key your AI agent spends with. Hashgate gives agents a post-quantum E-R-C forty-three thirty-seven smart account on QDay Aevum, where every user operation is signed with hash-based keys instead.",
+  vault: "No wallet needed. The browser derives thirty-two one-time Winternitz keys, and a factory deploys a smart account owned by their Merkle root. There is no E-C-D-S-A owner at all.",
+  session: "The owner gives the agent a scoped session: two cents per payment, four cents in total, twenty-four hours, and three approved vendors. The owner signs this user operation with one one-time key, it goes through QDay's own bundler, and our paymaster sponsors the gas.",
+  agent: "Now the agent reads the inbox with Gemini. We tell it to behave as if it's compromised, so it obeys instructions hidden inside invoices. Two invoices are paid, each user operation signed with a fresh one-time key. The over-cap invoice is refused. And the hidden instruction to pay an attacker is refused too: payee not allowed.",
+  proof: "The bundler would never include that payment. Pushed straight into the entry point anyway, it reverts on-chain, with the account's own error.",
+  drill: "Now assume Q-Day has arrived, and the attacker holds every E-C-D-S-A key in the system. A forged withdrawal fails the signature check. Replaying a real agent operation fails: that one-time key is spent. And one owner operation revokes the agent, instantly.",
+  close: "Every step is a real user operation on Aevum testnet, through QDay's bundler. The account, paymaster, SDK and agent are open source. Hashgate. The agent can ask. Only a hash chain can pay.",
 };
 
 async function speak(text) {
@@ -108,10 +108,10 @@ async function record() {
   await page.goto(`${SITE}/console`, { waitUntil: "networkidle" });
   await page.waitForTimeout(600);
   await say(page, "vault");
-  await btn(page, "Create my vault").click();
-  await page.getByText("Vault balance").waitFor({ timeout: 60_000 });
+  await btn(page, "Create my account").click();
+  await page.getByText("Account balance").waitFor({ timeout: 60_000 });
   await idle(page);
-  await page.locator("aside").getByText(/Demo treasury deposited|No demo funds/).first().waitFor({ timeout: 60_000 });
+  await page.locator("aside").getByText(/Demo treasury sent|No demo funds/).first().waitFor({ timeout: 60_000 });
   await finish(page, "vault");
 
   await smooth(page, "main section:nth-of-type(2)");
@@ -141,7 +141,8 @@ async function record() {
   await page.goto(href, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(6000);
   await page.evaluate(`(${CAPTION})(${JSON.stringify(LINES.proof)})`);
-  await page.getByText(/PayeeNotAllowed|execution reverted|Error/).first().waitFor({ timeout: 20_000 }).catch(() => null);
+  await page.getByText(/FailedOpWithRevert|execution reverted|Error/).first().waitFor({ timeout: 20_000 }).catch(() => null);
+  await page.evaluate(() => scrollTo({ top: 260, behavior: "smooth" }));
   await finish(page, "proof", 2500);
 
   await page.goBack({ waitUntil: "networkidle" });

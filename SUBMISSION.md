@@ -2,7 +2,7 @@
 
 **Name:** Hashgate
 
-**Tagline (one line):** Post-quantum session keys for AI payment agents: tUSD8 budgets on QDay Aevum, authorised by hash-based one-time signatures verified in Solidity.
+**Tagline (one line):** Post-quantum ERC-4337 smart accounts for AI payment agents on QDay Aevum: every UserOperation signed with a hash-based one-time key, sent through QDay's bundler.
 
 **Track:** Native AI Assistants (also fits Open Innovation, Decentralized Payments)
 
@@ -11,9 +11,9 @@
 **Links**
 - Live demo (no wallet needed): https://hashgate-three.vercel.app
 - GitHub: https://github.com/vibhanshu-s/hashgate
-- Demo video: https://youtu.be/d-nyhSCl2Kw
+- Demo video: https://youtu.be/kcW9YxvPOIw
 - Pitch deck: https://hashgate-three.vercel.app/deck (PDF in the repo: `media/hashgate-deck.pdf`)
-- Contract (Aevum testnet 44005): 0x699d045bb5acfe677e7b0a44257eb4c9a5c73674
+- Account factory (Aevum 44005): 0x54cd8d534c187bf9d6db8a37c7b45e3ad1444b21 · paymaster 0x48de838a3d18f8965edf8cb5db2517a92375809f · v1 vault 0x699d045bb5acfe677e7b0a44257eb4c9a5c73674
 
 ## Description
 
