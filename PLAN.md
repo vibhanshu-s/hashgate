@@ -70,3 +70,22 @@ Honest limits (to state in README): WOTS keys are one-time, so sessions have a f
 5. README with mermaid architecture, env table, addresses, tx hashes; MIT license; NOTICE.
 6. Test live at 1440px and 390px. Video (YouTube Unlisted, ~3 min), deck.
 7. Benchmark against criteria and top competitors; submit only if it clears the bar.
+
+## 5. Benchmark (2026-11-19, before submitting)
+
+Scored against the 8 judging criteria (1–5, my honest view) and the strongest public rivals.
+
+| Criterion | Hashgate | Evidence | Gap |
+|---|---|---|---|
+| 1 UX & presentation | 4 | Whole flow in ~1 min with no wallet; plain-language refusals; live log; phone layout with sticky status; 9-slide deck; narrated video | Vault creation waits ~10 s for two txs; no light theme |
+| 2 Demo | 5 | Every step a real Aevum tx with explorer link; refusals can be recorded as reverted txs (`PayeeNotAllowed` visible on explorer); reproducible script `tools/smoke.mjs` | — |
+| 3 Docs | 4 | README: mermaid flow + sequence, env table, addresses, tx table, API examples, limits, roadmap, dev feedback | No separate SDK API reference page |
+| 4 Innovation | 5 | Only post-quantum entry among ~60 public repos; WOTS verifier in Solidity; matches host's PQ identity | — |
+| 5 Technical / platform integration | 3–4 | Assembly verifier, 11 Foundry tests (fuzz + cross-language vector) + 10 Node e2e tests in CI, retries, simulate-before-send, EIP-3009 bound deposits | Doesn't use ERC-4337 / QDay bundler / paymaster (PayeeGuard and MeterPass do) |
+| 6 Utility & market | 3 | Clear audience (payment agents, PQ delegation), business model, mainnet roadmap | PQ urgency is forward-looking; no user validation |
+| 7 Safety | 5 | Least privilege, caps, budget, expiry, allowlist, instant revoke, preflight refusals, no admin, keys never leave browser | Seeds in localStorage (documented) |
+| 8 Ecosystem | 4 | MIT SDK + Solidity library, reusable relayer pattern, developer feedback section | Not published to npm |
+
+Rivals checked: **PayeeGuard** (emilhuseyn/aevum-qday: ERC-4337 smart account, QDay bundler, tUSD8 paymaster, Docker, video), **MeterPass** (opxy16: x402 batch settlement, Kernel session keys, 178× gas saving, broad tests), **SpendLeash** (risingjerry: x402 + caps + allowlist, live). They are ahead on idiomatic AA integration; Hashgate is ahead on originality, safety story and fit with the "Post-Quantum" tag, and level on demo and docs.
+
+**Verdict: clears the bar to submit.** Biggest remaining improvement if time allows before 11 Dec: wrap a Hashgate session as an ERC-4337 validator (QDay bundler) so it scores on criterion 5 too.

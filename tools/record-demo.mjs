@@ -23,21 +23,32 @@ const LINES = {
   close: "Every step is a real transaction on Aevum testnet, and the contract, the SDK and the agent are open source. Hashgate. The agent can ask. Only a hash chain can pay.",
 };
 
+async function speak(text) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const tts = new MsEdgeTTS();
+      await tts.setMetadata("en-US-AndrewNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+      const { audioStream } = tts.toStream(text);
+      const chunks = [];
+      await new Promise((res, rej) => {
+        audioStream.on("data", (d) => chunks.push(d));
+        audioStream.on("end", res);
+        audioStream.on("error", rej);
+      });
+      tts.close?.();
+      return Buffer.concat(chunks);
+    } catch (e) {
+      if (attempt >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+}
+
 async function narrate() {
-  const tts = new MsEdgeTTS();
-  await tts.setMetadata("en-US-AndrewNeural", OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
   for (const [k, text] of Object.entries(LINES)) {
     const file = path.join(TMP, `${k}.mp3`);
     if (fs.existsSync(file) && fs.statSync(file).size > 1000) continue;
-    const { audioStream } = tts.toStream(text);
-    const chunks = [];
-    await new Promise((res, rej) => {
-      audioStream.on("data", (d) => chunks.push(d));
-      audioStream.on("end", res);
-      audioStream.on("close", res);
-      audioStream.on("error", rej);
-    });
-    fs.writeFileSync(file, Buffer.concat(chunks));
+    fs.writeFileSync(file, await speak(text));
   }
 }
 
@@ -100,14 +111,14 @@ async function record() {
   await btn(page, "Create my vault").click();
   await page.getByText("Vault balance").waitFor({ timeout: 60_000 });
   await idle(page);
-  await page.getByText(/Demo treasury deposited|No demo funds/).first().waitFor({ timeout: 60_000 });
+  await page.locator("aside").getByText(/Demo treasury deposited|No demo funds/).first().waitFor({ timeout: 60_000 });
   await finish(page, "vault");
 
   await smooth(page, "main section:nth-of-type(2)");
   await page.waitForTimeout(700);
   await say(page, "session");
   await btn(page, "Sign & open session").click();
-  await page.getByText("Agent session opened").waitFor({ timeout: 60_000 });
+  await page.locator("aside").getByText("Agent session opened").waitFor({ timeout: 60_000 });
   await finish(page, "session");
 
   await smooth(page, "main section:nth-of-type(3)");
@@ -124,7 +135,7 @@ async function record() {
 
   await say(page, "proof");
   await page.getByRole("button", { name: "sign & record this refusal on-chain" }).last().click();
-  await page.getByText("Refusal recorded on-chain").waitFor({ timeout: 60_000 });
+  await page.locator("aside").getByText("Refusal recorded on-chain").waitFor({ timeout: 60_000 });
   const href = await page.locator("aside li", { hasText: "Refusal recorded on-chain" }).locator("a").first().getAttribute("href");
   await page.waitForTimeout(800);
   await page.goto(href, { waitUntil: "domcontentloaded" });
@@ -142,7 +153,7 @@ async function record() {
   await page.getByText(/^Withdrawal:/).waitFor({ timeout: 60_000 });
   await page.waitForTimeout(2500);
   await btn(page, "Revoke current session").click();
-  await page.getByText("Session revoked").first().waitFor({ timeout: 60_000 });
+  await page.locator("aside").getByText("Session revoked").first().waitFor({ timeout: 60_000 });
   await page.waitForTimeout(600);
   await btn(page, "Run the agent").click();
   await page.waitForTimeout(1500);

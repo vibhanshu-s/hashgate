@@ -30,6 +30,10 @@ table.t td.code { font-family: var(--font-mono); color: var(--color-rose); font-
   .deck-hint { display: none; }
   .slide { margin: 0; border: 0; }
   body > header, body > footer { display: none !important; }
-  main { padding: 0 !important; max-width: none !important; }
+  main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  .deck { padding: 0 !important; margin: 0 !important; overflow: visible !important; }
+  .slide { box-sizing: border-box; height: 720px; }
+  .slide:last-child { break-after: auto; }
+  html, body { margin: 0 !important; padding: 0 !important; }
 }
 @page { size: 1280px 720px; margin: 0; }
