@@ -14,8 +14,8 @@ export async function POST(req: Request) {
   const { vaultId } = (await req.json().catch(() => ({}))) as { vaultId?: string };
   if (!vaultId || !isHex(vaultId) || vaultId.length !== 66) return json({ ok: false, message: "Bad vault id." }, 400);
   if (dripped.has(vaultId)) return json({ ok: false, message: "This vault already got its demo funds." }, 400);
-  if (!rateLimit(`drip:${ip}`, 3, 24 * 60 * 60 * 1000)) {
-    return json({ ok: false, message: "Demo funds are limited to 3 vaults per network per day. Deposit tUSD8 with a wallet instead." }, 429);
+  if (!rateLimit(`drip:${ip}`, 5, 24 * 60 * 60 * 1000)) {
+    return json({ ok: false, message: "Demo funds are limited to 5 vaults per network per day. Deposit tUSD8 with a wallet instead." }, 429);
   }
   const [, balance, sessions, exists] = await publicClient.readContract({
     address: HASHGATE, abi: hashgateAbi, functionName: "getVault", args: [vaultId as Hex],

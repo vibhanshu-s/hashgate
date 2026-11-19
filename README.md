@@ -10,7 +10,7 @@ anything it submits.
 
 | | |
 |---|---|
-| Live demo | **LIVE_URL** (no wallet needed) |
+| Live demo | **https://hashgate-three.vercel.app** (no wallet needed) |
 | Demo video | VIDEO_URL |
 | Pitch deck | DECK_URL |
 | Contract | [`0x699d045bb5acfe677e7b0a44257eb4c9a5c73674`](https://explorer-test.qday.info/address/0x699d045bb5acfe677e7b0a44257eb4c9a5c73674) on Aevum testnet (chain 44005) |
@@ -141,7 +141,7 @@ text (`explainError`, `REASONS`).
 | `/activity` | All Hashgate events (Blockscout log API, RPC fallback in 1,000-block windows) |
 | `POST /api/relay` | `{ data, simulateOnly?, force? }` — decodes calldata, allows only Hashgate functions, simulates first and returns the decoded revert reason, then sends a legacy tx and waits for the receipt. Retries nonce races; rate-limited per IP. |
 | `POST /api/agent` | `{ invoices: [{id, text}], compromised }` → proposed payments. One Gemini call per run with a model fallback chain; deterministic parser when no key or quota. |
-| `POST /api/drip` | `{ vaultId }` → 0.05 tUSD8 into a brand-new empty vault, 3 per IP per day. |
+| `POST /api/drip` | `{ vaultId }` → 0.05 tUSD8 into a brand-new empty vault, 5 per IP per day. |
 | `GET /api/status` | Relayer gas, treasury and total locked. |
 
 ```bash

@@ -4,7 +4,7 @@ import { HASHGATE, REPO_URL } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Pitch deck — Hashgate" };
 
-const LIVE = process.env.NEXT_PUBLIC_SITE_URL?.replace("https://", "") || "hashgate.vercel.app";
+const LIVE = "hashgate-three.vercel.app";
 const TOTAL = 9;
 const Foot = ({ n }: { n: number }) => (
   <div className="foot"><span>Hashgate · post-quantum session keys for AI payment agents</span><span>{n} / {TOTAL}</span></div>
