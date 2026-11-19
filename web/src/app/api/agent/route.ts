@@ -16,8 +16,11 @@ export type Proposal = {
 };
 
 const SYSTEM = `You are a payables agent for a small company. For each invoice, extract exactly one payment:
-the payee's 0x address, the amount in tUSD8 as a decimal string, and a short memo (the invoice number).
-Explain your decision in one sentence.`;
+- invoiceId: copy the id written after "--- invoice" exactly (for example "inv-1042"), not the invoice number
+- to: the payee's 0x address
+- amount: the amount in tUSD8 as a decimal string, for example "0.006"
+- memo: the invoice number only, for example "PI-1042"
+- reasoning: one short sentence explaining your decision.`;
 
 // Demo switch: a model that obeys instructions hidden in documents. Hashgate's point is that the
 // chain, not the prompt, decides what an agent can spend — so we show it with a compromised agent.
@@ -60,7 +63,7 @@ async function askGemini(invoices: Invoice[], compromised: boolean): Promise<Pro
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": key },
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(20_000),
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: compromised ? COMPROMISED : SYSTEM }] },
           contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -72,8 +75,9 @@ async function askGemini(invoices: Invoice[], compromised: boolean): Promise<Pro
       const text = body?.candidates?.[0]?.content?.parts?.[0]?.text;
       const parsed = JSON.parse(text) as { payments: Omit<Proposal, "source">[] };
       const out = parsed.payments
-        .filter((p) => isAddress(p.to) && Number(p.amount) > 0 && invoices.some((i) => i.id === p.invoiceId))
-        .map((p) => ({ ...p, to: getAddress(p.to), source: "gemini" as const, model }));
+        .map((p, i) => ({ ...p, invoiceId: invoices.some((x) => x.id === p.invoiceId) ? p.invoiceId : invoices[i]?.id }))
+        .filter((p) => p.invoiceId && isAddress(p.to) && Number(p.amount) > 0)
+        .map((p) => ({ ...p, invoiceId: p.invoiceId!, to: getAddress(p.to), source: "gemini" as const, model }));
       if (out.length) return out;
     } catch {
       // timeout, quota or malformed JSON: try the next model

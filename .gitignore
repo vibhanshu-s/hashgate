@@ -12,3 +12,6 @@ cache
 artifacts
 .vercel
 .claude
+
+.vercel
+.env*
