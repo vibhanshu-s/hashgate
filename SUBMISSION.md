@@ -6,6 +6,8 @@
 
 **Track:** Native AI Assistants (also fits Open Innovation, Decentralized Payments)
 
+**Submitted:** https://dorahacks.io/build/51330 (Native AI Assistants track, 2026-11-19, under review)
+
 **Links**
 - Live demo (no wallet needed): https://hashgate-three.vercel.app
 - GitHub: https://github.com/vibhanshu-s/hashgate
