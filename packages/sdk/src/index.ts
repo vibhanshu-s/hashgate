@@ -4,3 +4,4 @@ export * from "./digests.js";
 export * from "./abi.js";
 export * from "./aevum.js";
 export * from "./errors.js";
+export * from "./aa.js";

@@ -5,6 +5,12 @@ export const HASHGATE = getAddress(
 ) as Address;
 export const DEPLOY_BLOCK = BigInt(process.env.NEXT_PUBLIC_DEPLOY_BLOCK || "0");
 export const CHAIN_ID = 44005;
+
+// ERC-4337 deployment (EntryPoint v0.7, QDay bundler)
+export const ACCOUNT_FACTORY = getAddress(process.env.NEXT_PUBLIC_ACCOUNT_FACTORY || "0x54cd8d534c187bf9d6db8a37c7b45e3ad1444b21") as Address;
+export const PAYMASTER = getAddress(process.env.NEXT_PUBLIC_PAYMASTER || "0x48de838a3d18f8965edf8cb5db2517a92375809f") as Address;
+export const ACCOUNT_IMPLEMENTATION = getAddress("0x24a1c67db3691230ab24c0ff6ce2f50d96150fba") as Address;
+export const AA_DEPLOY_BLOCK = BigInt(process.env.NEXT_PUBLIC_AA_DEPLOY_BLOCK || "3560212");
 export const REPO_URL = "https://github.com/vibhanshu-s/hashgate";
 
 /** Demo vendors. Addresses are fixed, key-less "sink" addresses so the demo is reproducible. */

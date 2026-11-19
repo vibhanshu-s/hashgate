@@ -20,6 +20,8 @@ jobs:
         run: cd contracts && forge build --sizes
       - name: Unit, fuzz and cross-language tests
         run: cd contracts && forge test -vv --gas-report
+      - name: ERC-4337 fork test (real EntryPoint v0.7 on Aevum)
+        run: cd contracts && forge test --match-test fork --fork-url https://rpc-test.qday.info -vv
 
   sdk:
     name: SDK + contract on an in-process EVM

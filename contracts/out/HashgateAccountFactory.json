@@ -1,0 +1,161 @@
+{
+ "abi": [
+  {
+   "inputs": [
+    {
+     "internalType": "contract HashgateAccount",
+     "name": "implementation",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "nonpayable",
+   "type": "constructor"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": true,
+     "internalType": "address",
+     "name": "account",
+     "type": "address"
+    },
+    {
+     "indexed": false,
+     "internalType": "bytes32",
+     "name": "pubSeed",
+     "type": "bytes32"
+    },
+    {
+     "indexed": false,
+     "internalType": "bytes32",
+     "name": "root",
+     "type": "bytes32"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint8",
+     "name": "height",
+     "type": "uint8"
+    },
+    {
+     "indexed": false,
+     "internalType": "bytes32",
+     "name": "salt",
+     "type": "bytes32"
+    }
+   ],
+   "name": "AccountCreated",
+   "type": "event"
+  },
+  {
+   "inputs": [],
+   "name": "IMPLEMENTATION",
+   "outputs": [
+    {
+     "internalType": "contract HashgateAccount",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "cloneRuntimeCodeHash",
+   "outputs": [
+    {
+     "internalType": "bytes32",
+     "name": "",
+     "type": "bytes32"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "components": [
+      {
+       "internalType": "bytes32",
+       "name": "pubSeed",
+       "type": "bytes32"
+      },
+      {
+       "internalType": "bytes32",
+       "name": "root",
+       "type": "bytes32"
+      },
+      {
+       "internalType": "uint8",
+       "name": "height",
+       "type": "uint8"
+      }
+     ],
+     "internalType": "struct HashgateAccount.Key",
+     "name": "ownerKey",
+     "type": "tuple"
+    },
+    {
+     "internalType": "bytes32",
+     "name": "salt",
+     "type": "bytes32"
+    }
+   ],
+   "name": "createAccount",
+   "outputs": [
+    {
+     "internalType": "contract HashgateAccount",
+     "name": "account",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "components": [
+      {
+       "internalType": "bytes32",
+       "name": "pubSeed",
+       "type": "bytes32"
+      },
+      {
+       "internalType": "bytes32",
+       "name": "root",
+       "type": "bytes32"
+      },
+      {
+       "internalType": "uint8",
+       "name": "height",
+       "type": "uint8"
+      }
+     ],
+     "internalType": "struct HashgateAccount.Key",
+     "name": "ownerKey",
+     "type": "tuple"
+    },
+    {
+     "internalType": "bytes32",
+     "name": "salt",
+     "type": "bytes32"
+    }
+   ],
+   "name": "getAddress",
+   "outputs": [
+    {
+     "internalType": "address",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  }
+ ],
+ "bytecode": "0x60a060405234801561000f575f80fd5b5060405161056538038061056583398101604081905261002e9161003f565b6001600160a01b031660805261006c565b5f6020828403121561004f575f80fd5b81516001600160a01b0381168114610065575f80fd5b9392505050565b6080516104d56100905f395f818160960152818160dc015261036101526104d55ff3fe608060405234801561000f575f80fd5b506004361061004a575f3560e01c8063203c1f101461004e57806326b260f61461007e5780633a4741bd1461009157806397b41b7c146100b8575b5f80fd5b61006161005c366004610410565b61014a565b6040516001600160a01b0390911681526020015b60405180910390f35b61006161008c366004610410565b6102b0565b6100617f000000000000000000000000000000000000000000000000000000000000000081565b61013c60405169363d3d373d3d3d363d7360b01b60208201526001600160601b03197f000000000000000000000000000000000000000000000000000000000000000060601b16602a8201526e5af43d82803e903d91602b57fd5bf360881b603e8201525f90604d0160405160208183030381529060405280519060200120905090565b604051908152602001610075565b5f8061015684846102b0565b90506001600160a01b0381163b1561016f5790506102aa565b5f610178610335565b90505f61018586866103b6565b90505f818351602085015ff590506001600160a01b0381166101de5760405162461bcd60e51b815260206004820152600e60248201526d18dc99585d194c8819985a5b195960921b604482015260640160405180910390fd5b809450846001600160a01b0316637952e8fd886040518263ffffffff1660e01b815260040161020d9190610453565b5f604051808303815f87803b158015610224575f80fd5b505af1158015610236573d5f803e3d5ffd5b5050506001600160a01b03821690507f393d08c2452ddc04fea15444eef2dce2f2b8f381b825e418f663cdefa417a52a883560208a013561027d60608c0160408d0161047f565b60408051938452602084019290925260ff16908201526060810189905260800160405180910390a2505050505b92915050565b5f806001600160f81b0319306102c686866103b6565b6102ce610335565b805160209182012060405161031595949392016001600160f81b031994909416845260609290921b6001600160601b03191660018401526015830152603582015260550190565b60408051808303601f190181529190528051602090910120949350505050565b60408051733d602d80600a3d3981f3363d3d373d3d3d363d7360601b60208201526001600160601b03197f000000000000000000000000000000000000000000000000000000000000000060601b1660348201526e5af43d82803e903d91602b57fd5bf360881b604882015281516037818303018152605790910190915290565b5f823560208401356103ce606086016040870161047f565b60408051602081019490945283019190915260ff1660608201526080810183905260a00160405160208183030381529060405280519060200120905092915050565b5f808284036080811215610422575f80fd5b606081121561042f575f80fd5b50919360608501359350915050565b803560ff8116811461044e575f80fd5b919050565b81358152602080830135908201526060810160ff6104736040850161043e565b16604083015292915050565b5f6020828403121561048f575f80fd5b6104988261043e565b939250505056fea2646970667358221220d7d2b15b110b0a3951832f2e6f0e3e2aaba828845d3e040ae914fb09ee4be13f64736f6c63430008180033"
+}

@@ -112,4 +112,75 @@ library WOTS {
         if (path.length != height || leafIndex >> height != 0) return false;
         return rootFromPath(leafFromSignature(pubSeed, leafIndex, digest, sig), leafIndex, path) == root;
     }
+
+    // ── memory variants (for signatures decoded from a UserOperation) ──
+
+    function leafFromSignatureMem(bytes32 pubSeed, uint256 leafIndex, bytes32 digest, bytes memory sig)
+        internal
+        pure
+        returns (bytes32 leaf)
+    {
+        if (sig.length != SIG_BYTES) revert BadSignatureLength();
+        /// @solidity memory-safe-assembly
+        assembly {
+            let ptr := mload(0x40)
+            mstore(ptr, pubSeed)
+            let pkBase := add(ptr, 160)
+            let leafTweak := shl(16, leafIndex)
+            let sigData := add(sig, 32)
+            let csum := 0
+            for { let i := 0 } lt(i, 67) { i := add(i, 1) } {
+                let d
+                switch lt(i, 64)
+                case 1 {
+                    d := and(shr(sub(252, mul(i, 4)), digest), 15)
+                    csum := add(csum, sub(15, d))
+                }
+                default { d := and(shr(mul(sub(66, i), 4), csum), 15) }
+                let x := mload(add(sigData, mul(i, 32)))
+                let chainTweak := or(leafTweak, shl(8, i))
+                for { let j := d } lt(j, 15) { j := add(j, 1) } {
+                    mstore(add(ptr, 32), or(chainTweak, j))
+                    mstore(add(ptr, 64), x)
+                    x := keccak256(ptr, 96)
+                }
+                mstore(add(pkBase, mul(i, 32)), x)
+            }
+            mstore(add(ptr, 96), pubSeed)
+            mstore(add(ptr, 128), or(shl(255, 1), leafIndex))
+            leaf := keccak256(add(ptr, 96), 2208)
+        }
+    }
+
+    function verifyMem(
+        bytes32 pubSeed,
+        bytes32 root,
+        uint8 height,
+        uint256 leafIndex,
+        bytes32 digest,
+        bytes memory sig,
+        bytes32[] memory path
+    ) internal pure returns (bool) {
+        if (path.length != height || leafIndex >> height != 0 || sig.length != SIG_BYTES) return false;
+        bytes32 node = leafFromSignatureMem(pubSeed, leafIndex, digest, sig);
+        uint256 idx = leafIndex;
+        for (uint256 h = 0; h < path.length; ++h) {
+            bytes32 sibling = path[h];
+            /// @solidity memory-safe-assembly
+            assembly {
+                switch and(idx, 1)
+                case 0 {
+                    mstore(0x00, node)
+                    mstore(0x20, sibling)
+                }
+                default {
+                    mstore(0x00, sibling)
+                    mstore(0x20, node)
+                }
+                node := keccak256(0x00, 0x40)
+            }
+            idx >>= 1;
+        }
+        return node == root;
+    }
 }

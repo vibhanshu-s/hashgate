@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 type Ev = { event: string };
 
 export function LiveStats() {
-  const [s, setS] = useState<{ vaults: number; payments: number; blocked?: number; locked?: string; block?: string } | null>(null);
+  const [s, setS] = useState<{ vaults: number; payments: number; blocked?: number; locked?: string; block?: string; gas?: string } | null>(null);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -12,9 +12,9 @@ export function LiveStats() {
         const [a, st] = await Promise.all([fetch("/api/activity").then((r) => r.json()), fetch("/api/status").then((r) => r.json())]);
         const ev: Ev[] = a.events ?? [];
         if (alive) setS({
-          vaults: ev.filter((e) => e.event === "VaultCreated").length,
+          vaults: ev.filter((e) => (e.event === "VaultCreated" || e.event === "AccountCreated")).length,
           payments: ev.filter((e) => e.event === "AgentPaid").length,
-          locked: st.lockedUsd, block: st.block,
+          locked: st.lockedUsd, block: st.block, gas: st.paymasterDeposit ? Number(st.paymasterDeposit).toFixed(3) : undefined,
         });
       } catch {
         if (alive) setS({ vaults: 0, payments: 0 });
@@ -23,9 +23,9 @@ export function LiveStats() {
     return () => { alive = false; };
   }, []);
   const items = [
-    ["Vaults on Aevum", s ? String(s.vaults) : "…"],
+    ["Accounts & vaults on Aevum", s ? String(s.vaults) : "…"],
     ["PQ-signed agent payments", s ? String(s.payments) : "…"],
-    ["tUSD8 in vaults", s?.locked ?? "…"],
+    ["Sponsored gas left (tQDAY)", s?.gas ?? "…"],
     ["ECDSA keys with authority", "0"],
   ];
   return (

@@ -1,12 +1,12 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { decodeFunctionData, encodeFunctionData, formatUnits, getAddress, isAddress, type Address, type Hex } from "viem";
-import { KeyTree, REASONS, explainError, explorerTx, randomSeed, withdrawDigest, hashgateAbi } from "@hashgate/sdk";
+import { formatUnits, getAddress, isAddress, type Address, type Hex } from "viem";
+import { REASONS, explorerAddress, explorerTx } from "@hashgate/sdk";
 import { ATTACKER, DRIP_AMOUNT, VENDORS, vendorName } from "@/lib/config";
 import {
-  AGENT_HEIGHT, DOMAIN, OWNER_HEIGHT, activeVault, agentPayCall, checkPayment, createVaultData, loadStore, memoOf,
-  newVaultKeys, openSessionCall, readSession, readVault, relay, revokeCall, saveStore, usd, withdrawCall,
-  type RelayResult, type StoredSession, type StoredVault,
+  AGENT_HEIGHT, OWNER_HEIGHT, activeVault, agentPay, checkPayment, createAccount, forgedWithdraw, loadStore,
+  newVaultKeys, openSession as openSessionOp, readSession, readVault, resend, revokeSession, saveStore, usd,
+  withdraw as withdrawOp, type OpResult, type Store, type StoredSession, type StoredVault,
 } from "@/lib/client";
 import { INVOICES } from "./invoices";
 import { depositWithWallet } from "./wallet";
@@ -14,22 +14,23 @@ import { depositWithWallet } from "./wallet";
 type LogKind = "ok" | "blocked" | "info" | "error";
 type LogEntry = { id: number; t: number; kind: LogKind; title: string; detail?: string; tx?: Hex };
 type Proposal = { invoiceId: string; to: Address; amount: string; memo: string; reasoning: string; source: string };
-type RunRow = Proposal & { status: "checking" | "signing" | "sending" | "paid" | "blocked" | "error"; reason?: string; tx?: Hex; leaf?: number; gas?: string; data?: Hex; forcedTx?: Hex };
+type RunRow = Proposal & { status: "checking" | "signing" | "sending" | "paid" | "blocked" | "error"; reason?: string; tx?: Hex; leaf?: number; gas?: string; signedOp?: Record<string, string>; forcedTx?: Hex; via?: string };
 
 const fmt = (x: bigint | string) => formatUnits(BigInt(x), 6);
 const short = (h: string, n = 6) => `${h.slice(0, n + 2)}…${h.slice(-4)}`;
+const why = (r: OpResult) => `${r.code ? `${r.code} · ` : ""}${r.error ?? "Rejected"}: ${r.message ?? ""}`;
 
 export function Console() {
-  const [store, setStore] = useState(() => ({ v: 1 as const, vaults: [] as StoredVault[], active: undefined as Hex | undefined }));
+  const [store, setStore] = useState<Store>({ v: 2, vaults: [] });
   const [hydrated, setHydrated] = useState(false);
   const [chain, setChain] = useState<{ balance: bigint; ownerUsed: number; exists: boolean } | null>(null);
-  const [sessionChain, setSessionChain] = useState<Record<string, { spent: bigint; revoked: boolean; expiresAt: bigint; leavesUsed: number; payments: number }>>({});
+  const [sessionChain, setSessionChain] = useState<Record<string, { spent: bigint; revoked: boolean; expiresAt: number; leavesUsed: number; payments: number }>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
   const logId = useRef(0);
 
   useEffect(() => {
-    setStore(loadStore() as typeof store);
+    setStore(loadStore());
     setHydrated(true);
   }, []);
 
@@ -43,6 +44,11 @@ export function Console() {
       return next;
     });
   }, []);
+  const reserveOwner = useCallback((n: number) => persist((v) => { v.nextOwnerLeaf = Math.max(v.nextOwnerLeaf, n); }), [persist]);
+  const reserveSession = useCallback((sid: Hex) => (n: number) => persist((v) => {
+    const x = v.sessions.find((q) => q.sessionId === sid);
+    if (x) x.nextLeaf = Math.max(x.nextLeaf, n);
+  }), [persist]);
 
   const push = useCallback((kind: LogKind, title: string, detail?: string, tx?: Hex) => {
     setLog((l) => [{ id: ++logId.current, t: Date.now(), kind, title, detail, tx }, ...l].slice(0, 60));
@@ -51,11 +57,12 @@ export function Console() {
   const refresh = useCallback(async () => {
     if (!vault) return;
     try {
-      const v = await readVault(vault.vaultId);
+      const v = await readVault(vault.account);
       setChain({ balance: v.balance, ownerUsed: v.ownerLeavesUsed, exists: v.exists });
-      const entries = await Promise.all(vault.sessions.map(async (s) => [s.sessionId, await readSession(s.sessionId)] as const));
+      if (!v.exists) return;
+      const entries = await Promise.all(vault.sessions.map(async (s) => [s.sessionId, await readSession(vault.account, s.sessionId)] as const));
       setSessionChain(Object.fromEntries(entries.filter(([, s]) => s.exists).map(([id, s]) => [id, {
-        spent: s.spent, revoked: s.revoked, expiresAt: s.expiresAt, leavesUsed: s.leavesUsed, payments: s.payments,
+        spent: s.spent, revoked: s.revoked, expiresAt: Number(s.expiresAt), leavesUsed: s.leavesUsed, payments: s.payments,
       }])));
     } catch {
       /* RPC hiccup: keep the last known state */
@@ -68,28 +75,29 @@ export function Console() {
     return () => clearInterval(t);
   }, [refresh]);
 
-  // ── step 1: vault ──
+  const opLog = (r: OpResult) => (r.via ? `via ${r.via}` : "");
+
+  // ── step 1: smart account ──
   async function createVault() {
     setBusy("vault");
     try {
       push("info", "Deriving your owner key", `${2 ** OWNER_HEIGHT} one-time WOTS keys from a fresh seed, in this browser.`);
       await new Promise((r) => setTimeout(r, 30));
-      const v = newVaultKeys();
+      const v = await newVaultKeys();
       setStore((s) => {
-        const next = { ...s, vaults: [...s.vaults, v], active: v.vaultId };
+        const next: Store = { ...s, vaults: [...s.vaults, v], active: v.account };
         saveStore(next);
         return next;
       });
-      const r = await relay(createVaultData(v));
-      if (!r.ok) throw new Error(r.message || "Could not create the vault.");
+      const r = await createAccount(v);
+      if (!r.ok) throw new Error(r.message || "Could not create the account.");
       persist((x) => { x.createdTx = r.hash; });
-      push("ok", "Vault created on Aevum", `Vault ${short(v.vaultId)} committed to your owner key root.`, r.hash);
-      const d = await fetch("/api/drip", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ vaultId: v.vaultId }) }).then((x) => x.json());
-      if (d.ok) push("ok", `Demo treasury deposited ${fmt(DRIP_AMOUNT)} tUSD8`, "So you can try the agent without a wallet.", d.hash);
-      else push("info", "No demo funds this time", d.message);
+      push("ok", "Smart account deployed on Aevum", `ERC-4337 account ${short(v.account)}, owned by your post-quantum key root. No ECDSA owner.`, r.hash);
+      if (r.drip?.hash) push("ok", `Demo treasury sent ${fmt(DRIP_AMOUNT)} tUSD8`, "So you can try the agent without a wallet. Gas is sponsored by the Hashgate paymaster.", r.drip.hash);
+      else if (r.drip?.message) push("info", "No demo funds this time", r.drip.message);
       await refresh();
     } catch (e) {
-      push("error", "Vault creation failed", (e as Error).message);
+      push("error", "Account creation failed", (e as Error).message);
     } finally {
       setBusy(null);
     }
@@ -97,10 +105,10 @@ export function Console() {
 
   function backup() {
     if (!vault) return;
-    const blob = new Blob([JSON.stringify({ hashgate: "v1", warning: "Testnet key backup. Anyone with this file controls the vault.", vault }, null, 1)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ hashgate: "v2", warning: "Testnet key backup. Anyone with this file controls the account.", vault }, null, 1)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `hashgate-vault-${vault.vaultId.slice(2, 10)}.json`;
+    a.download = `hashgate-account-${vault.account.slice(2, 10)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -109,15 +117,15 @@ export function Console() {
     file.text().then((t) => {
       try {
         const v = JSON.parse(t).vault as StoredVault;
-        if (!v?.vaultId || !v.ownerSeed) throw new Error();
+        if (!v?.account || !v.ownerSeed) throw new Error();
         setStore((s) => {
-          const next = { ...s, vaults: [...s.vaults.filter((x) => x.vaultId !== v.vaultId), v], active: v.vaultId };
+          const next: Store = { ...s, vaults: [...s.vaults.filter((x) => x.account !== v.account), v], active: v.account };
           saveStore(next);
           return next;
         });
-        push("ok", "Vault restored from backup", short(v.vaultId));
+        push("ok", "Account restored from backup", short(v.account));
       } catch {
-        push("error", "That file is not a Hashgate backup");
+        push("error", "That file is not a Hashgate v2 backup");
       }
     });
   }
@@ -131,12 +139,11 @@ export function Console() {
       if (Number(policy.maxPerPayment) <= 0 || Number(policy.budget) < Number(policy.maxPerPayment)) throw new Error("The cap must be positive and no larger than the budget.");
       push("info", "Deriving the agent's session key", `${2 ** AGENT_HEIGHT} one-time keys: one per payment.`);
       await new Promise((r) => setTimeout(r, 30));
-      const { session, data, ots } = await openSessionCall(vault, policy.label, policy, (n) => persist((v) => { v.nextOwnerLeaf = n; }));
-      push("info", `Owner signed with one-time key #${ots.leafIndex}`, `WOTS signature: ${(ots.sig.length - 2) / 2} bytes + ${ots.path.length}-step Merkle path. No ECDSA involved.`);
-      const r = await relay(data);
-      if (!r.ok) throw new Error(r.message);
+      const { session, r } = await openSessionOp(vault, policy.label, policy, reserveOwner);
+      if (!r.ok) throw new Error(why(r));
+      push("info", `Owner signed the UserOperation with one-time key #${r.leaf}`, "WOTS signature over the userOpHash: 2,144 bytes + Merkle path. No ECDSA involved.");
       persist((v) => { v.sessions = [{ ...session, openedTx: r.hash }, ...v.sessions]; });
-      push("ok", "Agent session opened", `Cap ${policy.maxPerPayment} · budget ${policy.budget} tUSD8 · ${policy.hours}h · ${policy.payees.length || "any"} payee(s)`, r.hash);
+      push("ok", "Agent session opened", `Cap ${policy.maxPerPayment} · budget ${policy.budget} tUSD8 · ${policy.hours}h · ${policy.payees.length || "any"} payee(s) · ${opLog(r)}`, r.hash);
       await refresh();
     } catch (e) {
       push("error", "Could not open the session", (e as Error).message);
@@ -149,11 +156,10 @@ export function Console() {
     if (!vault) return;
     setBusy(`revoke:${s.sessionId}`);
     try {
-      const data = await revokeCall(vault, s, (n) => persist((v) => { v.nextOwnerLeaf = n; }));
-      const r = await relay(data);
-      if (!r.ok) throw new Error(r.message);
+      const r = await revokeSession(vault, s, reserveOwner);
+      if (!r.ok) throw new Error(why(r));
       persist((v) => { const x = v.sessions.find((q) => q.sessionId === s.sessionId); if (x) x.revoked = true; });
-      push("ok", "Session revoked", "The next payment this agent signs will be refused on-chain.", r.hash);
+      push("ok", "Session revoked", `Owner UserOperation, one-time key #${r.leaf}. The agent's next operation fails validation. ${opLog(r)}`, r.hash);
       await refresh();
     } catch (e) {
       push("error", "Revoke failed", (e as Error).message);
@@ -181,33 +187,28 @@ export function Console() {
       setEngine(res.engine);
       const list: RunRow[] = (res.proposals as Proposal[]).map((p) => ({ ...p, to: getAddress(p.to), status: "checking" }));
       setRows(list);
-      // Sequential: each payment uses the next one-time key.
-      let leafCursor = session.nextLeaf;
+      // Sequential: each payment uses the next one-time key and the next EntryPoint nonce.
       for (let i = 0; i < list.length; i++) {
         const p = list[i];
         const update = (patch: Partial<RunRow>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
         let amount: bigint;
         try { amount = usd(p.amount); } catch { update({ status: "error", reason: "The agent proposed an invalid amount." }); continue; }
-        const code = await checkPayment(session.sessionId, p.to, amount);
+        const code = await checkPayment(vault.account, session.sessionId, p.to, amount);
         if (code !== 0) {
-          // The contract's own policy view says no: refuse before signing, so no one-time key is spent.
-          update({ status: "blocked", reason: REASONS[code], amount: p.amount });
+          // The account's own policy view says no: refuse before signing, so no one-time key is spent.
+          update({ status: "blocked", reason: REASONS[code] });
           push("blocked", `Blocked: ${p.amount} tUSD8 → ${vendorName(p.to) ?? short(p.to)}`, `${REASONS[code]} (not signed)`);
           continue;
         }
         update({ status: "signing" });
-        const s = { ...session, nextLeaf: leafCursor };
-        const call = agentPayCall(s, p.to, amount, p.memo);
-        leafCursor = call.leaf + 1;
-        persist((v) => { const x = v.sessions.find((q) => q.sessionId === session.sessionId); if (x) x.nextLeaf = leafCursor; });
-        update({ status: "sending", leaf: call.leaf, data: call.data });
-        const r: RelayResult = await relay(call.data);
+        const current = activeVault(loadStore())?.sessions.find((x) => x.sessionId === session.sessionId) ?? session;
+        const r = await agentPay(current, vault.account, p.to, amount, p.memo, reserveSession(session.sessionId));
         if (r.ok) {
-          update({ status: "paid", tx: r.hash, gas: r.gasUsed });
-          push("ok", `Paid ${p.amount} tUSD8 → ${vendorName(p.to) ?? short(p.to)}`, `${p.memo} · one-time key #${call.leaf} · ${r.gasUsed} gas`, r.hash);
+          update({ status: "paid", tx: r.hash, gas: r.gasUsed, leaf: r.leaf, signedOp: r.signedOp, via: r.via });
+          push("ok", `Paid ${p.amount} tUSD8 → ${vendorName(p.to) ?? short(p.to)}`, `${p.memo} · UserOperation signed with session key #${r.leaf} · ${r.gasUsed} gas · ${opLog(r)}`, r.hash);
         } else {
-          update({ status: r.stage === "simulation" ? "blocked" : "error", reason: r.message, data: call.data });
-          push(r.stage === "simulation" ? "blocked" : "error", `Refused: ${p.amount} tUSD8 → ${vendorName(p.to) ?? short(p.to)}`, r.message);
+          update({ status: r.stage === "validation" || r.stage === "bundler" ? "blocked" : "error", reason: why(r), leaf: r.leaf });
+          push("blocked", `Refused: ${p.amount} tUSD8 → ${vendorName(p.to) ?? short(p.to)}`, why(r));
         }
       }
       await refresh();
@@ -222,17 +223,15 @@ export function Console() {
     const row = rows[i];
     const v = activeVault(loadStore());
     const sess = v?.sessions[0];
-    if (!row || !sess) return;
+    if (!row || !sess || !v) return;
     setBusy(`force:${i}`);
     try {
-      // Signs with the next one-time key and submits anyway, so the contract's refusal is a real,
-      // reverted transaction anyone can open on the explorer.
-      const call = agentPayCall(sess, row.to, usd(row.amount), row.memo);
-      persist((x) => { const q = x.sessions.find((z) => z.sessionId === sess.sessionId); if (q) q.nextLeaf = call.leaf + 1; });
-      const r = await relay(call.data, false, true);
-      if (!r.hash) throw new Error(r.message);
-      setRows((rs) => rs.map((x, j) => (j === i ? { ...x, forcedTx: r.hash, leaf: call.leaf } : x)));
-      push("blocked", "Refusal recorded on-chain", `Signed with one-time key #${call.leaf}; the contract reverted it. Open it on the explorer.`, r.hash);
+      // The bundler would never include this op. The relayer calls EntryPoint.handleOps directly,
+      // so the account's refusal becomes a real reverted transaction on the explorer.
+      const r = await agentPay(sess, v.account, row.to, usd(row.amount), row.memo, reserveSession(sess.sessionId), true);
+      if (!r.hash) throw new Error(r.message ?? why(r));
+      setRows((rs) => rs.map((x, j) => (j === i ? { ...x, forcedTx: r.hash, leaf: r.leaf } : x)));
+      push("blocked", "Refusal recorded on-chain", `EntryPoint.handleOps reverted with the account's error. Session key #${r.leaf}.`, r.hash);
     } catch (e) {
       push("error", "Could not submit", (e as Error).message);
     } finally {
@@ -248,29 +247,21 @@ export function Console() {
     try {
       // The attacker has every ECDSA key (relayer, deployer, your MetaMask) and a quantum computer.
       // What they don't have is a preimage of your hash chains, so they sign with their own WOTS key.
-      const attackerTree = KeyTree.fromSeed(randomSeed(), OWNER_HEIGHT);
       const amount = chain?.balance && chain.balance > 0n ? chain.balance : usd("0.01");
-      const ownerRoot = (await readVault(vault.vaultId)).owner.root as Hex;
-      const lastLeaf = 2 ** OWNER_HEIGHT - 1;
-      const forged = attackerTree.sign(lastLeaf, withdrawDigest(DOMAIN, vault.vaultId, ATTACKER, amount, ownerRoot));
-      const data = encodeFunctionData({ abi: hashgateAbi, functionName: "withdraw", args: [vault.vaultId, ATTACKER, amount, forged] });
-      const r = await relay(data, true);
-      const msg = r.ok ? "Unexpected: simulation passed." : `${r.error} — ${explainError(r.error)}`;
+      const r = await forgedWithdraw(vault, ATTACKER, amount);
+      const msg = r.ok ? "Unexpected: the operation was accepted." : why(r);
       setDrill((d) => ({ ...d, qday: msg }));
       push(r.ok ? "error" : "blocked", `Q-Day drill: forged withdrawal of ${fmt(amount)} tUSD8`, msg);
 
-      // Redirect: take a real signed agent payment from this page and point it at the attacker.
-      const paid = rows.find((x) => x.status === "paid" && x.data);
-      if (paid?.data) {
-        const p = decodePay(paid.data);
-        const other = VENDORS.find((x) => x.address !== paid.to)!.address;
-        const tampered = encodeFunctionData({ abi: hashgateAbi, functionName: "pay", args: [p.sessionId, other, p.amount, p.memo, p.ots] });
-        const r2 = await relay(tampered, true);
-        const msg2 = r2.ok ? "Unexpected: simulation passed." : `${r2.error} — ${explainError(r2.error)}`;
+      // Replay: resend one of the agent's real, already-included signed UserOperations.
+      const paid = rows.find((x) => x.status === "paid" && x.signedOp);
+      if (paid?.signedOp) {
+        const r2 = await resend(paid.signedOp);
+        const msg2 = r2.ok ? "Unexpected: the replay was accepted." : why(r2);
         setDrill((d) => ({ ...d, replay: msg2 }));
-        push(r2.ok ? "error" : "blocked", "Drill: replay a real agent signature to another vendor", msg2);
+        push(r2.ok ? "error" : "blocked", "Drill: replay a real agent UserOperation", msg2);
       } else {
-        setDrill((d) => ({ ...d, replay: "Run the agent first; this drill reuses one of its real signatures." }));
+        setDrill((d) => ({ ...d, replay: "Run the agent first; this drill replays one of its real operations." }));
       }
     } catch (e) {
       push("error", "Drill failed", (e as Error).message);
@@ -286,10 +277,9 @@ export function Console() {
     if (!vault || !isAddress(wTo)) return push("error", "Enter a valid 0x address to withdraw to");
     setBusy("withdraw");
     try {
-      const data = await withdrawCall(vault, getAddress(wTo), usd(wAmt), (n) => persist((v) => { v.nextOwnerLeaf = n; }));
-      const r = await relay(data);
-      if (!r.ok) throw new Error(r.message);
-      push("ok", `Withdrew ${wAmt} tUSD8`, `To ${short(wTo)}, signed with a one-time owner key.`, r.hash);
+      const r = await withdrawOp(vault, getAddress(wTo), usd(wAmt), reserveOwner);
+      if (!r.ok) throw new Error(why(r));
+      push("ok", `Withdrew ${wAmt} tUSD8`, `To ${short(wTo)}, an owner UserOperation signed with one-time key #${r.leaf}.`, r.hash);
       await refresh();
     } catch (e) {
       push("error", "Withdraw failed", (e as Error).message);
@@ -302,10 +292,8 @@ export function Console() {
     if (!vault) return;
     setBusy("deposit");
     try {
-      const data = await depositWithWallet(vault.vaultId, usd(dAmt), (m) => push("info", m));
-      const r = await relay(data);
-      if (!r.ok) throw new Error(r.message);
-      push("ok", `Deposited ${dAmt} tUSD8 from your wallet`, "Gasless: you signed an EIP-3009 authorization bound to this vault.", r.hash);
+      const hash = await depositWithWallet(vault.account, usd(dAmt), (m) => push("info", m));
+      push("ok", `Sent ${dAmt} tUSD8 from your wallet`, "A plain tUSD8 transfer into your post-quantum account.", hash);
       await refresh();
     } catch (e) {
       push("error", "Deposit failed", (e as Error).message);
@@ -318,7 +306,7 @@ export function Console() {
   const sessionState = useMemo(() => {
     if (!session) return null;
     if (sc?.revoked || session.revoked) return "revoked";
-    if (sc && Number(sc.expiresAt) * 1000 < Date.now()) return "expired";
+    if (sc && sc.expiresAt * 1000 < Date.now()) return "expired";
     return sc ? "active" : "pending";
   }, [session, sc]);
 
@@ -329,39 +317,39 @@ export function Console() {
       <div className="min-w-0 space-y-6">
         <header>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Console</h1>
-          <p className="mt-1 text-sm text-mute">Every action below is a real transaction on QDay Aevum testnet. Your keys stay in this browser; a relayer pays the gas.</p>
+          <p className="mt-1 text-sm text-mute">Every action is an ERC-4337 UserOperation, signed in this browser with a post-quantum one-time key and sent through QDay's bundler. Gas is sponsored by the Hashgate paymaster.</p>
         </header>
 
         {/* STEP 1 */}
-        <Step n={1} title="Create a post-quantum vault" done={!!chain?.exists}>
+        <Step n={1} title="Create a post-quantum smart account" done={!!chain?.exists}>
           {!vault || (!chain?.exists && !vault.createdTx) ? (
             <div className="space-y-3">
-              <p className="text-sm text-mute">Generates a seed in this browser, derives {2 ** OWNER_HEIGHT} one-time WOTS keys, and commits their Merkle root on-chain. No wallet, no gas, no sign-up.</p>
+              <p className="text-sm text-mute">Generates a seed in this browser, derives {2 ** OWNER_HEIGHT} one-time WOTS keys, and deploys an ERC-4337 smart account owned by their Merkle root. No wallet, no gas, no sign-up.</p>
               <div className="flex flex-wrap gap-2">
-                <button className="btn btn-primary" onClick={createVault} disabled={!!busy}>{busy === "vault" ? <><span className="spinner" /> Creating…</> : "Create my vault"}</button>
+                <button className="btn btn-primary" onClick={createVault} disabled={!!busy}>{busy === "vault" ? <><span className="spinner" /> Creating…</> : "Create my account"}</button>
                 <label className="btn btn-ghost cursor-pointer">Restore backup<input type="file" accept="application/json" className="hidden" onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} /></label>
               </div>
             </div>
           ) : (
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-3">
-                <Stat k="Vault balance" v={chain ? `${fmt(chain.balance)} tUSD8` : "…"} />
+                <Stat k="Account balance" v={chain ? `${fmt(chain.balance)} tUSD8` : "…"} />
                 <Stat k="Owner keys used" v={chain ? `${chain.ownerUsed} / ${2 ** vault.ownerHeight}` : "…"} />
-                <Stat k="Vault id" v={short(vault.vaultId)} mono />
+                <Stat k="Smart account (ERC-4337)" v={short(vault.account)} mono href={explorerAddress(vault.account)} />
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="btn btn-ghost" onClick={backup}>Download key backup</button>
-                <button className="btn btn-ghost" onClick={createVault} disabled={!!busy}>New vault</button>
+                <button className="btn btn-ghost" onClick={createVault} disabled={!!busy}>New account</button>
                 <details className="group w-full">
                   <summary className="btn btn-ghost w-fit cursor-pointer list-none">Deposit / withdraw</summary>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <div className="card space-y-2 p-3">
-                      <div className="label">Deposit tUSD8 from your wallet (gasless)</div>
+                      <div className="label">Add tUSD8 from your wallet</div>
                       <div className="flex gap-2"><input className="field" value={dAmt} onChange={(e) => setDAmt(e.target.value)} inputMode="decimal" aria-label="Deposit amount" /><button className="btn btn-ghost shrink-0" disabled={!!busy} onClick={deposit}>{busy === "deposit" ? <span className="spinner" /> : "Deposit"}</button></div>
-                      <p className="text-xs text-dim">Signs an EIP-3009 authorization in MetaMask or Rabby. Your wallet needs tUSD8, not tQDAY.</p>
+                      <p className="text-xs text-dim">A normal tUSD8 transfer from MetaMask or Rabby into your account. Your wallet pays a little tQDAY gas.</p>
                     </div>
                     <div className="card space-y-2 p-3">
-                      <div className="label">Withdraw (owner-signed, post-quantum)</div>
+                      <div className="label">Withdraw (owner UserOperation, post-quantum)</div>
                       <input className="field mono" placeholder="0x… destination" value={wTo} onChange={(e) => setWTo(e.target.value)} aria-label="Withdraw to address" />
                       <div className="flex gap-2"><input className="field" value={wAmt} onChange={(e) => setWAmt(e.target.value)} inputMode="decimal" aria-label="Withdraw amount" /><button className="btn btn-ghost shrink-0" disabled={!!busy} onClick={withdraw}>{busy === "withdraw" ? <span className="spinner" /> : "Withdraw"}</button></div>
                     </div>
@@ -369,9 +357,9 @@ export function Console() {
                 </details>
               </div>
               {store.vaults.length > 1 && (
-                <div className="flex flex-wrap items-center gap-2 text-xs text-mute">Your vaults:
+                <div className="flex flex-wrap items-center gap-2 text-xs text-mute">Your accounts:
                   {store.vaults.map((v) => (
-                    <button key={v.vaultId} className={`chip ${v.vaultId === vault.vaultId ? "border-mint text-mint" : ""}`} onClick={() => setStore((s) => { const n = { ...s, active: v.vaultId }; saveStore(n); return n; })}>{short(v.vaultId, 4)}</button>
+                    <button key={v.account} className={`chip ${v.account === vault.account ? "border-mint text-mint" : ""}`} onClick={() => setStore((s) => { const n = { ...s, active: v.account }; saveStore(n); return n; })}>{short(v.account, 4)}</button>
                   ))}
                 </div>
               )}
@@ -401,13 +389,13 @@ export function Console() {
           </fieldset>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button className="btn btn-primary" onClick={openSession} disabled={!!busy || !chain?.exists}>{busy === "session" ? <><span className="spinner" /> Signing & opening…</> : session ? "Open a new session" : "Sign & open session"}</button>
-            <span className="text-xs text-dim">You sign with one owner one-time key. The agent gets {2 ** AGENT_HEIGHT} keys of its own.</span>
+            <span className="text-xs text-dim">One owner UserOperation. The agent gets {2 ** AGENT_HEIGHT} keys of its own and may only call agentPay.</span>
           </div>
           {vault?.sessions.length ? (
             <ul className="mt-5 space-y-2">
               {vault.sessions.slice(0, 3).map((s, idx) => {
                 const c = sessionChain[s.sessionId];
-                const state = c?.revoked || s.revoked ? "revoked" : c && Number(c.expiresAt) * 1000 < Date.now() ? "expired" : c ? "active" : "pending";
+                const state = c?.revoked || s.revoked ? "revoked" : c && c.expiresAt * 1000 < Date.now() ? "expired" : c ? "active" : "pending";
                 const spent = c ? Number(fmt(c.spent)) : 0;
                 const budget = Number(fmt(s.policy.budget));
                 return (
@@ -486,14 +474,14 @@ export function Console() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="card p-3">
               <div className="text-sm font-medium">Q-Day drill</div>
-              <p className="mt-1 text-xs text-mute">Pretend a quantum computer cracked every ECDSA key: the relayer, the deployer, your MetaMask. The attacker tries to withdraw the whole vault, and to replay one of the agent's real signatures to a different vendor.</p>
+              <p className="mt-1 text-xs text-mute">Pretend a quantum computer cracked every ECDSA key: the relayer, the deployer, your MetaMask. The attacker signs a UserOperation to drain the account, and replays one of the agent's real operations. The QDay bundler rejects both.</p>
               <button className="btn btn-ghost mt-3" disabled={!!busy} onClick={qdayDrill}>{busy === "drill" ? <span className="spinner" /> : "Run the attack"}</button>
               {drill.qday && <p className="mt-2 text-xs text-rose">Withdrawal: {drill.qday}</p>}
               {drill.replay && <p className="mt-1 text-xs text-rose">Replay: {drill.replay}</p>}
             </div>
             <div className="card p-3">
               <div className="text-sm font-medium">Revoke, then run again</div>
-              <p className="mt-1 text-xs text-mute">Hit “Revoke now” on the session in step 2, then run the agent. The agent's payments are refused: the contract reports SessionIsRevoked.</p>
+              <p className="mt-1 text-xs text-mute">Hit “Revoke now” on the session in step 2, then run the agent. The agent's payments are refused: the account reports SessionIsRevoked.</p>
               {session && sessionState === "active" && <button className="btn btn-danger mt-3" disabled={!!busy} onClick={() => revoke(session)}>Revoke current session</button>}
               {sessionState === "revoked" && <p className="mt-3 text-xs text-mint">Session is revoked. Run the agent to see it refused.</p>}
             </div>
@@ -530,18 +518,11 @@ export function Console() {
         </div>
         <div className="card p-4 text-xs leading-relaxed text-mute">
           <div className="label mb-1">Where are my keys?</div>
-          Seeds are stored in this browser (localStorage) and never sent anywhere. The relayer receives only finished, signed calldata. Download a backup to keep the vault.
+          Seeds are stored in this browser (localStorage) and never sent anywhere. The server only estimates gas; this page recomputes the userOpHash before signing. Download a backup to keep the account.
         </div>
       </aside>
     </div>
   );
-}
-
-/** Pulls the arguments back out of real `pay` calldata (used by the redirect drill). */
-function decodePay(data: Hex) {
-  const d = decodeFunctionData({ abi: hashgateAbi, data });
-  const [sessionId, , amount, memo, ots] = d.args as readonly [Hex, Address, bigint, Hex, { leafIndex: number; sig: Hex; path: readonly Hex[] }];
-  return { sessionId, amount, memo, ots };
 }
 
 function Step({ n, title, done, disabled, children }: { n: number; title: string; done?: boolean; disabled?: boolean; children: React.ReactNode }) {
@@ -555,8 +536,8 @@ function Step({ n, title, done, disabled, children }: { n: number; title: string
     </section>
   );
 }
-function Stat({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
-  return <div className="rounded-lg border border-line bg-bg p-3"><div className="text-xs text-mute">{k}</div><div className={`mt-0.5 font-semibold ${mono ? "mono text-sm" : ""}`}>{v}</div></div>;
+function Stat({ k, v, mono, href }: { k: string; v: string; mono?: boolean; href?: string }) {
+  return <div className="rounded-lg border border-line bg-bg p-3"><div className="text-xs text-mute">{k}</div><div className={`mt-0.5 font-semibold ${mono ? "mono text-sm" : ""}`}>{href ? <a className="link" href={href} target="_blank" rel="noreferrer">{v} ↗</a> : v}</div></div>;
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="label">{label}</span>{children}</label>;

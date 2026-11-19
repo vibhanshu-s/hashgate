@@ -2,19 +2,31 @@
 import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import { explorerAddress, explorerTx } from "@hashgate/sdk";
-import { HASHGATE, vendorName } from "@/lib/config";
+import { ACCOUNT_FACTORY, HASHGATE, vendorName } from "@/lib/config";
 
-type Ev = { event: string; args: Record<string, string | string[]>; block: string; tx: string; time?: number };
+type Ev = { event: string; kind: "account" | "vault"; address: string; args: Record<string, string | string[]>; block: string; tx: string; time?: number };
 
 const LABEL: Record<string, string> = {
   VaultCreated: "Vault created", Deposited: "Deposit", SessionOpened: "Session opened", SessionRevoked: "Session revoked",
   AgentPaid: "Agent payment", Withdrawn: "Withdrawal", OwnerKeyRotated: "Owner key rotated",
+  AccountCreated: "Account created", Executed: "Owner call",
 };
 const short = (h: string) => `${h.slice(0, 8)}…${h.slice(-4)}`;
 
 function describe(e: Ev): string {
   const a = e.args;
   const amt = (x?: string | string[]) => (x ? `${formatUnits(BigInt(x as string), 6)} tUSD8` : "");
+  if (e.kind === "account") {
+    const acct = `account ${short(e.address)}`;
+    switch (e.event) {
+      case "AccountCreated": return `ERC-4337 account ${short(a.account as string)} · ${2 ** Number(a.height)} one-time owner keys`;
+      case "SessionOpened": return `${acct} · cap ${amt(a.maxPerPayment)} · budget ${amt(a.budget)} · ${(a.payees as string[]).length || "any"} payee(s)`;
+      case "SessionRevoked": return `${acct} · session ${short(a.sessionId as string)}`;
+      case "AgentPaid": return `${acct} · ${amt(a.amount)} → ${vendorName(a.to as string) ?? short(a.to as string)}`;
+      case "Executed": return `${acct} · call to ${short(a.to as string)}`;
+      default: return acct;
+    }
+  }
   switch (e.event) {
     case "VaultCreated": return `vault ${short(a.vaultId as string)} · ${2 ** Number(a.height)} one-time owner keys`;
     case "Deposited": return `${amt(a.amount)} into ${short(a.vaultId as string)}`;
@@ -44,7 +56,8 @@ export function Activity() {
     <div className="pt-8">
       <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">On-chain activity</h1>
       <p className="mt-1 text-sm text-mute">
-        Every Hashgate event on Aevum testnet, newest first. Contract{" "}
+        Every Hashgate event on Aevum testnet, newest first. Account factory{" "}
+        <a className="link mono break-all" href={explorerAddress(ACCOUNT_FACTORY)} target="_blank" rel="noreferrer">{ACCOUNT_FACTORY}</a>, v1 vault{" "}
         <a className="link mono break-all" href={explorerAddress(HASHGATE)} target="_blank" rel="noreferrer">{HASHGATE}</a>
         {source && <span className="text-dim"> · read via {source === "explorer" ? "Aevum explorer API" : "RPC (last 1,000 blocks)"}</span>}
       </p>
@@ -54,7 +67,7 @@ export function Activity() {
           {evs.map((e, i) => (
             <li key={`${e.tx}-${i}`} className="flex flex-col gap-1 bg-panel px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <span className={`chip mr-2 ${e.event === "AgentPaid" ? "border-mint/50 text-mint" : e.event === "SessionRevoked" ? "border-rose/50 text-rose" : ""}`}>{LABEL[e.event] ?? e.event}</span>
+                <span className="chip mr-2 text-dim">{e.kind === "account" ? "4337" : "v1"}</span><span className={`chip mr-2 ${e.event === "AgentPaid" ? "border-mint/50 text-mint" : e.event === "SessionRevoked" ? "border-rose/50 text-rose" : ""}`}>{LABEL[e.event] ?? e.event}</span>
                 <span className="text-sm text-mute">{describe(e)}</span>
               </div>
               <div className="flex shrink-0 gap-3 text-xs text-dim">

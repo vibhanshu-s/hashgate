@@ -1,0 +1,33 @@
+// Redeploys HashgatePaymaster and moves the old paymaster's EntryPoint deposit into it.
+import { readFileSync, writeFileSync } from "node:fs";
+import { createPublicClient, createWalletClient, http, parseEther, formatEther } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+const root = new URL("..", import.meta.url);
+const env = Object.fromEntries(readFileSync(new URL(".env.local", root), "utf8").split(/\r?\n/).filter((l) => /^[A-Z_]+=/.test(l)).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
+const chain = { id: 44005, name: "Aevum", nativeCurrency: { name: "tQDAY", symbol: "tQDAY", decimals: 18 }, rpcUrls: { default: { http: ["https://rpc-test.qday.info"] } } };
+const account = privateKeyToAccount(env.DEPLOYER_PRIVATE_KEY);
+const pub = createPublicClient({ chain, transport: http() });
+const w = createWalletClient({ chain, transport: http(), account });
+const file = new URL("deployments/aevum.json", root);
+const dep = JSON.parse(readFileSync(file, "utf8"));
+const pm = JSON.parse(readFileSync(new URL("contracts/out/HashgatePaymaster.json", root)));
+const EP = dep.aa.entryPoint;
+const epAbi = [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }];
+const wait = (hash) => pub.waitForTransactionReceipt({ hash, pollingInterval: 1000 });
+
+const old = dep.aa.paymaster;
+const oldBal = await pub.readContract({ address: EP, abi: epAbi, functionName: "balanceOf", args: [old] });
+if (oldBal > 0n) await wait(await w.writeContract({ address: old, abi: pm.abi, functionName: "withdrawTo", args: [account.address, oldBal], type: "legacy" }));
+console.log("withdrew", formatEther(oldBal), "from old paymaster", old);
+const hash = await w.deployContract({ abi: pm.abi, bytecode: pm.bytecode, args: [EP, dep.aa.accountCodehash, parseEther("0.005")], type: "legacy" });
+const r = await wait(hash);
+console.log("new paymaster", r.contractAddress, "tx", hash);
+const amount = oldBal > 0n ? oldBal : parseEther("0.3");
+const d = await w.writeContract({ address: r.contractAddress, abi: pm.abi, functionName: "deposit", value: amount, type: "legacy" });
+await wait(d);
+console.log("deposited", formatEther(amount), "tx", d);
+dep.aa.paymasterRetired = old;
+dep.aa.paymaster = r.contractAddress;
+dep.aa.txs.paymaster = hash;
+dep.aa.txs.deposit = d;
+writeFileSync(file, JSON.stringify(dep, null, 2));
