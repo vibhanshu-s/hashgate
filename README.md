@@ -11,8 +11,8 @@ anything it submits.
 | | |
 |---|---|
 | Live demo | **https://hashgate-three.vercel.app** (no wallet needed) |
-| Demo video | VIDEO_URL |
-| Pitch deck | DECK_URL |
+| Demo video | https://youtu.be/d-nyhSCl2Kw (2 min, narrated) |
+| Pitch deck | https://hashgate-three.vercel.app/deck ([PDF](media/hashgate-deck.pdf)) |
 | Contract | [`0x699d045bb5acfe677e7b0a44257eb4c9a5c73674`](https://explorer-test.qday.info/address/0x699d045bb5acfe677e7b0a44257eb4c9a5c73674) on Aevum testnet (chain 44005) |
 | Track | Native AI Assistants (Aevum Builder Challenge #1) |
 

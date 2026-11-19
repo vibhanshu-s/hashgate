@@ -9,7 +9,7 @@
 **Links**
 - Live demo (no wallet needed): https://hashgate-three.vercel.app
 - GitHub: https://github.com/vibhanshu-s/hashgate
-- Demo video: VIDEO_URL
+- Demo video: https://youtu.be/d-nyhSCl2Kw
 - Pitch deck: https://hashgate-three.vercel.app/deck (PDF in the repo: `media/hashgate-deck.pdf`)
 - Contract (Aevum testnet 44005): 0x699d045bb5acfe677e7b0a44257eb4c9a5c73674
 
