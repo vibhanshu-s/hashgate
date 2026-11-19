@@ -87,29 +87,30 @@ contract HashgateAccountTest is Test {
 
     function test_sessionPolicyEnforcedInValidation() public {
         bytes32 h = keccak256("x");
-        bytes memory toEvil = abi.encodeCall(HashgateAccount.agentPay, (sid, evil, 0.01e6, bytes32(0)));
+        bytes memory sig = _sig(agent, 1, sid, 0, h);
+        PackedUserOperation memory op = _op(abi.encodeCall(HashgateAccount.agentPay, (sid, evil, 0.01e6, bytes32(0))), sig);
         vm.expectRevert(abi.encodeWithSelector(HashgateAccount.PayeeNotAllowed.selector, evil));
-        account.validateUserOp(_op(toEvil, _sig(agent, 1, sid, 0, h)), h, 0);
+        account.validateUserOp(op, h, 0);
 
-        bytes memory tooMuch = abi.encodeCall(HashgateAccount.agentPay, (sid, vendor, 0.03e6, bytes32(0)));
+        op = _op(abi.encodeCall(HashgateAccount.agentPay, (sid, vendor, 0.03e6, bytes32(0))), sig);
         vm.expectRevert(abi.encodeWithSelector(HashgateAccount.OverPerPaymentCap.selector, 0.03e6, 0.02e6));
-        account.validateUserOp(_op(tooMuch, _sig(agent, 1, sid, 0, h)), h, 0);
+        account.validateUserOp(op, h, 0);
 
-        bytes memory steal = abi.encodeCall(HashgateAccount.execute, (address(tok), 0, ""));
+        op = _op(abi.encodeCall(HashgateAccount.execute, (address(tok), 0, "")), sig);
         vm.expectRevert(HashgateAccount.SessionMayOnlyPay.selector);
-        account.validateUserOp(_op(steal, _sig(agent, 1, sid, 0, h)), h, 0);
+        account.validateUserOp(op, h, 0);
     }
 
     function test_revokeAndLeafReuse() public {
         bytes32 h = keccak256("r");
-        bytes memory revoke = abi.encodeCall(HashgateAccount.revokeSession, (sid));
-        assertEq(account.validateUserOp(_op(revoke, _sig(owner, 0, 0, ownerLeaf, h)), h, 0), 0);
+        PackedUserOperation memory revokeOp = _op(abi.encodeCall(HashgateAccount.revokeSession, (sid)), _sig(owner, 0, 0, ownerLeaf, h));
+        assertEq(account.validateUserOp(revokeOp, h, 0), 0);
         vm.expectRevert(abi.encodeWithSelector(HashgateAccount.LeafAlreadyUsed.selector, ownerLeaf));
-        account.validateUserOp(_op(revoke, _sig(owner, 0, 0, ownerLeaf, h)), h, 0);
+        account.validateUserOp(revokeOp, h, 0);
         account.revokeSession(sid);
-        bytes memory pay = abi.encodeCall(HashgateAccount.agentPay, (sid, vendor, 0.01e6, bytes32(0)));
+        PackedUserOperation memory payOp = _op(abi.encodeCall(HashgateAccount.agentPay, (sid, vendor, 0.01e6, bytes32(0))), _sig(agent, 1, sid, 0, h));
         vm.expectRevert(HashgateAccount.SessionIsRevoked.selector);
-        account.validateUserOp(_op(pay, _sig(agent, 1, sid, 0, h)), h, 0);
+        account.validateUserOp(payOp, h, 0);
     }
 
     function test_onlyEntryPoint() public {
